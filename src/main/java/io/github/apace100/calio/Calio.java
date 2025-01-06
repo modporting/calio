@@ -61,7 +61,7 @@ public class Calio implements ModInitializer {
 		return tag1 == tag2
 			|| tag1 != null
 			&& tag2 != null
-			&& tag1.registry().equals(tag2.registry())
+			&& tag1.registryRef().equals(tag2.registryRef())
 			&& tag1.id().equals(tag2.id());
 	}
 

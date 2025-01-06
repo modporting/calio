@@ -2,7 +2,6 @@ package io.github.apace100.calio.mixin;
 
 import io.github.apace100.calio.CalioServer;
 import net.minecraft.registry.tag.TagKey;
-import net.minecraft.registry.tag.TagManagerLoader;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -12,6 +11,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.Collection;
 import java.util.List;
 
+/*
 @Mixin(TagManagerLoader.class)
 public abstract class TagManagerLoaderMixin {
 
@@ -30,3 +30,4 @@ public abstract class TagManagerLoaderMixin {
     }
 
 }
+*/

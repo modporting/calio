@@ -35,7 +35,7 @@ public class CalioPacketCodecs {
 
     public static final PacketCodec<ByteBuf, TagEntry> TAG_ENTRY = PacketCodec.tuple(
         TAG_ENTRY_ID, tagEntry -> ((TagEntryAccessor) tagEntry).callGetIdForCodec(),
-        PacketCodecs.BOOL, tagEntry -> ((TagEntryAccessor) tagEntry).isRequired(),
+        PacketCodecs.BOOLEAN, tagEntry -> ((TagEntryAccessor) tagEntry).isRequired(),
         TagEntry::new
     );
 

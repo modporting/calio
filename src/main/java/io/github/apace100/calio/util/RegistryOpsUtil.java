@@ -33,7 +33,7 @@ public class RegistryOpsUtil {
 					.orElse(null);
 
 				return infoGetter instanceof CachedRegistryInfoGetterAccessor cachedInfoGetter
-					? Optional.of(cachedInfoGetter.getRegistriesLookup())
+					? Optional.of(cachedInfoGetter.getRegistries())
 					: Optional.empty();
 
 			});
@@ -41,7 +41,7 @@ public class RegistryOpsUtil {
 
 	public static <T, I> Optional<RegistryEntryLookup<T>> getEntryLookup(DynamicOps<I> ops, RegistryKey<? extends Registry<T>> registryRef) {
 		return CalioServer.getDynamicRegistries()
-			.flatMap(registries -> registries.getOptionalWrapper(registryRef))
+			.flatMap(registries -> registries.getOptional(registryRef))
 			.map(impl -> (RegistryEntryLookup<T>) impl)
 			.or(() -> getOrCreate(ops)
 				.flatMap(registryOps -> registryOps.getEntryLookup(registryRef)));

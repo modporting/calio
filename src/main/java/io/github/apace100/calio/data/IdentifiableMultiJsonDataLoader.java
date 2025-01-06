@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import io.github.apace100.calio.CalioServer;
 import net.fabricmc.fabric.impl.resource.conditions.ResourceConditionsImpl;
+import net.minecraft.registry.RegistryOps;
 import net.minecraft.resource.ResourceManager;
 import net.minecraft.resource.ResourceType;
 import net.minecraft.util.Identifier;
@@ -106,7 +107,7 @@ public abstract class IdentifiableMultiJsonDataLoader extends ExtendedSinglePrep
                 String source = resource.source();
                 JsonElement jsonElement = resource.jsonData();
 
-                if (jsonElement instanceof JsonObject jsonObject && !ResourceConditionsImpl.applyResourceConditions(jsonObject, directoryName, resourceId, CalioServer.getDynamicRegistries().orElse(null))) {
+                if (jsonElement instanceof JsonObject jsonObject && !ResourceConditionsImpl.applyResourceConditions(jsonObject, directoryName, resourceId, CalioServer.getDynamicRegistries().map(RegistryOps.CachedRegistryInfoGetter::new).orElse(null))) {
                     this.onReject(source, resourceId);
                     entryIterator.remove();
                 }

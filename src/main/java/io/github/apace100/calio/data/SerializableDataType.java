@@ -339,7 +339,7 @@ public class SerializableDataType<T> {
                     return ops.getStringValue(input)
                         .flatMap(str -> DynamicIdentifier.ofResult(str, defaultNamespace))
                         .flatMap(id -> registry
-                            .getOrEmpty(aliases == null ? id : aliases.resolveAlias(id, registry::containsId))
+                            .getOptionalValue(aliases == null ? id : aliases.resolveAlias(id, registry::containsId))
                             .map(t -> Pair.of(t, input))
                             .map(DataResult::success)
                             .orElse(DataResult.error(() -> exception.apply(registry, id))));
@@ -643,7 +643,7 @@ public class SerializableDataType<T> {
                             Pair<RegistryKey<A>, T> keyAndInput = idAndInput.mapFirst(id -> RegistryKey.of(registry.getKey(), id));
                             RegistryKey<A> key = keyAndInput.getFirst();
 
-                            return registry.getEntry(key)
+                            return registry.getEntry(key.getValue())
                                 .map(entry -> keyAndInput.mapFirst(k -> (RegistryEntry<A>) entry))
                                 .map(DataResult::success)
                                 .orElse(DataResult.error(() -> "Type \"" + key.getValue() + "\" is not registered in registry \"" + registry.getKey().getValue() + "\"!"));
@@ -887,7 +887,7 @@ public class SerializableDataType<T> {
                     return TAG_ENTRY_SET.get().codec().decode(ops, input)
                         .map(entriesAndInput -> entriesAndInput
                             .mapFirst(entries -> new TagLike.Builder<>(registry.getKey(), entries))
-                            .mapFirst(builder -> builder.build(registry.getReadOnlyWrapper())));
+                            .mapFirst(builder -> builder.build(registry)));
                 }
 
                 @Override

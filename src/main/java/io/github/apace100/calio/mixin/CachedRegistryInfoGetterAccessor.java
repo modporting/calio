@@ -11,6 +11,6 @@ public interface CachedRegistryInfoGetterAccessor {
 
     @Final
     @Accessor
-    RegistryWrapper.WrapperLookup getRegistriesLookup();
+    RegistryWrapper.WrapperLookup getRegistries();
 
 }

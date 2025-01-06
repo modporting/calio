@@ -48,7 +48,7 @@ public class TagLike<T> {
         buf.writeRegistryKey(registryRef);
         CalioPacketCodecs.TAG_ENTRY_SET.encode(buf, entries());
 
-        buf.writeBoolean(SerializableRegistries.SYNCED_REGISTRIES.contains(registryRef));
+        buf.writeBoolean(SerializableRegistries.isSynced(registryRef));
 
     }
 
@@ -59,7 +59,7 @@ public class TagLike<T> {
 
         boolean syncedRegistry = buf.readBoolean();
         return syncedRegistry
-            ? builder(registryRef).build(buf.getRegistryManager().getWrapperOrThrow(registryRef))
+            ? builder(registryRef).build(buf.getRegistryManager().getOrThrow(registryRef))
             : new TagLike<>(registryRef, Map.of(), Map.of(), tagEntries);
 
     }

@@ -16,6 +16,7 @@ import io.github.apace100.calio.util.StatusEffectChance;
 import io.github.apace100.calio.util.TagLike;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.fabricmc.fabric.api.recipe.v1.ingredient.CustomIngredient;
+import net.fabricmc.fabric.api.recipe.v1.ingredient.CustomIngredientSerializer;
 import net.fabricmc.fabric.impl.recipe.ingredient.CustomIngredientImpl;
 import net.fabricmc.fabric.impl.recipe.ingredient.CustomIngredientPacketCodec;
 import net.minecraft.block.Block;
@@ -38,6 +39,7 @@ import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.fluid.Fluid;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.consume.UseAction;
 import net.minecraft.loot.condition.LootCondition;
 import net.minecraft.loot.function.LootFunction;
 import net.minecraft.nbt.*;
@@ -53,6 +55,7 @@ import net.minecraft.recipe.RecipeEntry;
 import net.minecraft.recipe.RecipeSerializer;
 import net.minecraft.registry.*;
 import net.minecraft.registry.entry.RegistryEntry;
+import net.minecraft.registry.entry.RegistryEntryList;
 import net.minecraft.registry.tag.EntityTypeTags;
 import net.minecraft.registry.tag.TagEntry;
 import net.minecraft.registry.tag.TagKey;
@@ -64,7 +67,6 @@ import net.minecraft.text.TextCodecs;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
 import net.minecraft.util.Identifier;
-import net.minecraft.util.UseAction;
 import net.minecraft.util.dynamic.Codecs;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
@@ -83,7 +85,7 @@ public final class SerializableDataTypes {
 
     public static final SerializableDataType<Integer> INT = SerializableDataType.of(Codec.INT, PacketCodecs.INTEGER.cast());
 
-	public static final SerializableDataType<List<Integer>> INTS = INT.list();
+    public static final SerializableDataType<List<Integer>> INTS = INT.list();
 
     public static final SerializableDataType<Integer> POSITIVE_INT = SerializableDataType.boundNumber(INT, 1, Integer.MAX_VALUE);
 
@@ -93,7 +95,7 @@ public final class SerializableDataTypes {
 
     public static final SerializableDataType<List<Integer>> NON_NEGATIVE_INTS = NON_NEGATIVE_INT.list();
 
-    public static final SerializableDataType<Boolean> BOOLEAN = SerializableDataType.of(Codec.BOOL, PacketCodecs.BOOL.cast());
+    public static final SerializableDataType<Boolean> BOOLEAN = SerializableDataType.of(Codec.BOOL, PacketCodecs.BOOLEAN.cast());
 
     public static final SerializableDataType<Float> FLOAT = SerializableDataType.of(Codec.FLOAT, PacketCodecs.FLOAT.cast());
 
@@ -124,89 +126,83 @@ public final class SerializableDataTypes {
     public static final SerializableDataType<List<String>> STRINGS = STRING.list();
 
     public static final SerializableDataType<Number> NUMBER = SerializableDataType.of(
-		new PrimitiveCodec<>() {
+            new PrimitiveCodec<>() {
 
-			@Override
-			public <T> DataResult<Number> read(DynamicOps<T> ops, T input) {
-				return ops.getNumberValue(input);
-			}
+                @Override
+                public <T> DataResult<Number> read(DynamicOps<T> ops, T input) {
+                    return ops.getNumberValue(input);
+                }
 
-			@Override
-			public <T> T write(DynamicOps<T> ops, Number value) {
-				return ops.createNumeric(value);
-			}
+                @Override
+                public <T> T write(DynamicOps<T> ops, Number value) {
+                    return ops.createNumeric(value);
+                }
 
-		},
-		PacketCodec.of(
-			(number, buf) -> {
-				switch (number) {
-					case null ->
-						buf.writeByte(-1);
-					case Double d -> {
-						buf.writeByte(0);
-						buf.writeDouble(d);
-					}
-					case Float f -> {
-						buf.writeByte(1);
-						buf.writeFloat(f);
-					}
-					case Integer i -> {
-						buf.writeByte(2);
-						buf.writeInt(i);
-					}
-					case Long l -> {
-						buf.writeByte(3);
-						buf.writeLong(l);
-					}
-					default -> {
-						buf.writeByte(4);
-						buf.writeString(number.toString());
-					}
-				}
-			},
-			buf -> {
+            },
+            PacketCodec.of(
+                    (number, buf) -> {
+                        switch (number) {
+                            case null -> buf.writeByte(-1);
+                            case Double d -> {
+                                buf.writeByte(0);
+                                buf.writeDouble(d);
+                            }
+                            case Float f -> {
+                                buf.writeByte(1);
+                                buf.writeFloat(f);
+                            }
+                            case Integer i -> {
+                                buf.writeByte(2);
+                                buf.writeInt(i);
+                            }
+                            case Long l -> {
+                                buf.writeByte(3);
+                                buf.writeLong(l);
+                            }
+                            default -> {
+                                buf.writeByte(4);
+                                buf.writeString(number.toString());
+                            }
+                        }
+                    },
+                    buf -> {
 
-				byte type = buf.readByte();
-				return switch (type) {
-					case 0 ->
-						buf.readDouble();
-					case 1 ->
-						buf.readFloat();
-					case 2 ->
-						buf.readInt();
-					case 3 ->
-						buf.readLong();
-					case 4 ->
-						new LazilyParsedNumber(buf.readString());
-					default ->
-						throw new IllegalStateException("Unexpected type ID \"" + type + "\" (allowed range: [0-4]");
-				};
+                        byte type = buf.readByte();
+                        return switch (type) {
+                            case 0 -> buf.readDouble();
+                            case 1 -> buf.readFloat();
+                            case 2 -> buf.readInt();
+                            case 3 -> buf.readLong();
+                            case 4 -> new LazilyParsedNumber(buf.readString());
+                            default ->
+                                    throw new IllegalStateException("Unexpected type ID \"" + type + "\" (allowed range: [0-4]");
+                        };
 
-			}
-		)
-	);
+                    }
+            )
+    );
 
     public static final SerializableDataType<List<Number>> NUMBERS = NUMBER.list();
 
     public static final CompoundSerializableDataType<Vec3d> VECTOR = SerializableDataType.compound(
-        new SerializableData()
-            .add("x", DOUBLE, 0.0)
-            .add("y", DOUBLE, 0.0)
-            .add("z", DOUBLE, 0.0),
-        data -> new Vec3d(
-            data.getDouble("x"),
-            data.getDouble("y"),
-            data.getDouble("z")
-        ),
-        (vec3d, serializableData) -> serializableData.instance()
-            .set("x", vec3d.getX())
-            .set("y", vec3d.getY())
-            .set("z", vec3d.getZ())
+            new SerializableData()
+                    .add("x", DOUBLE, 0.0)
+                    .add("y", DOUBLE, 0.0)
+                    .add("z", DOUBLE, 0.0),
+            data -> new Vec3d(
+                    data.getDouble("x"),
+                    data.getDouble("y"),
+                    data.getDouble("z")
+            ),
+            (vec3d, serializableData) -> serializableData.instance()
+                    .set("x", vec3d.getX())
+                    .set("y", vec3d.getY())
+                    .set("z", vec3d.getZ())
     );
 
     public static final SerializableDataType<Identifier> IDENTIFIER = SerializableDataType.of(
-        Codec.STRING.comapFlatMap(DynamicIdentifier::ofResult, Identifier::toString),
-        Identifier.PACKET_CODEC.cast()
+            Codec.STRING.comapFlatMap(DynamicIdentifier::ofResult, Identifier::toString),
+            Identifier.PACKET_CODEC.cast()
     );
 
     public static final SerializableDataType<List<Identifier>> IDENTIFIERS = IDENTIFIER.list();
@@ -214,9 +210,9 @@ public final class SerializableDataTypes {
     public static final SerializableDataType<RegistryKey<Enchantment>> ENCHANTMENT = SerializableDataType.registryKey(RegistryKeys.ENCHANTMENT);
 
     public static SerializableDataType<RegistryKey<World>> DIMENSION = SerializableDataType.registryKey(RegistryKeys.WORLD, Set.of(
-        World.OVERWORLD,
-        World.NETHER,
-        World.END
+            World.OVERWORLD,
+            World.NETHER,
+            World.END
     ));
 
     public static final SerializableDataType<EntityAttribute> ATTRIBUTE = SerializableDataType.registry(Registries.ATTRIBUTE);
@@ -229,7 +225,7 @@ public final class SerializableDataTypes {
 
     public static final SerializableDataType<EntityAttributeModifier.Operation> MODIFIER_OPERATION = SerializableDataType.enumValue(EntityAttributeModifier.Operation.class);
 
-	public static final SerializableDataType<EntityAttributeModifier> ATTRIBUTE_MODIFIER = SerializableDataType.lazy(() -> SerializableDataType.compound(DataObjectFactories.ATTRIBUTE_MODIFIER));
+    public static final SerializableDataType<EntityAttributeModifier> ATTRIBUTE_MODIFIER = SerializableDataType.lazy(() -> SerializableDataType.compound(DataObjectFactories.ATTRIBUTE_MODIFIER));
 
     public static final SerializableDataType<List<EntityAttributeModifier>> ATTRIBUTE_MODIFIERS = ATTRIBUTE_MODIFIER.list();
 
@@ -246,28 +242,28 @@ public final class SerializableDataTypes {
     public static final SerializableDataType<List<RegistryEntry<StatusEffect>>> STATUS_EFFECT_ENTRIES = STATUS_EFFECT_ENTRY.list();
 
     public static final CompoundSerializableDataType<StatusEffectInstance> STATUS_EFFECT_INSTANCE = SerializableDataType.compound(
-        new SerializableData()
-            .add("id", STATUS_EFFECT_ENTRY)
-            .add("duration", INT, 100)
-            .add("amplifier", INT, 0)
-            .add("ambient", BOOLEAN, false)
-            .add("show_particles", BOOLEAN, true)
-            .add("show_icon", BOOLEAN, true),
-        data -> new StatusEffectInstance(
-            data.get("id"),
-            data.getInt("duration"),
-            data.getInt("amplifier"),
-            data.getBoolean("ambient"),
-            data.getBoolean("show_particles"),
-            data.getBoolean("show_icon")
-        ),
-        (effectInstance, serializableData) -> serializableData.instance()
-            .set("id", effectInstance.getEffectType())
-            .set("duration", effectInstance.getDuration())
-            .set("amplifier", effectInstance.getAmplifier())
-            .set("ambient", effectInstance.isAmbient())
-            .set("show_particles", effectInstance.shouldShowParticles())
-            .set("show_icon", effectInstance.shouldShowIcon())
+            new SerializableData()
+                    .add("id", STATUS_EFFECT_ENTRY)
+                    .add("duration", INT, 100)
+                    .add("amplifier", INT, 0)
+                    .add("ambient", BOOLEAN, false)
+                    .add("show_particles", BOOLEAN, true)
+                    .add("show_icon", BOOLEAN, true),
+            data -> new StatusEffectInstance(
+                    data.get("id"),
+                    data.getInt("duration"),
+                    data.getInt("amplifier"),
+                    data.getBoolean("ambient"),
+                    data.getBoolean("show_particles"),
+                    data.getBoolean("show_icon")
+            ),
+            (effectInstance, serializableData) -> serializableData.instance()
+                    .set("id", effectInstance.getEffectType())
+                    .set("duration", effectInstance.getDuration())
+                    .set("amplifier", effectInstance.getAmplifier())
+                    .set("ambient", effectInstance.isAmbient())
+                    .set("show_particles", effectInstance.shouldShowParticles())
+                    .set("show_icon", effectInstance.shouldShowIcon())
     );
 
     public static final SerializableDataType<List<StatusEffectInstance>> STATUS_EFFECT_INSTANCES = STATUS_EFFECT_INSTANCE.list();
@@ -279,12 +275,12 @@ public final class SerializableDataTypes {
     public static final SerializableDataType<TagKey<Block>> BLOCK_TAG = SerializableDataType.tagKey(RegistryKeys.BLOCK);
 
     public static final SerializableDataType<TagKey<EntityType<?>>> ENTITY_TAG = SerializableDataType.tagKey(RegistryKeys.ENTITY_TYPE);
-
+/*
 	private static final SerializableDataType<Ingredient.StackEntry> INLINE_INGREDIENT_STACK_ENTRY = ITEM
 		.xmap(ItemStack::new, ItemStack::getItem)
-		.xmap(Ingredient.StackEntry::new, Ingredient.StackEntry::stack);
+		.xmap(Ingredient, Ingredient.StackEntry::stack);
 
-	private static final SerializableDataType<Ingredient.TagEntry> INLINE_INGREDIENT_TAG_ENTRY = SerializableDataType.of(
+	private static final SerializableDataType<Ingredient.> INLINE_INGREDIENT_TAG_ENTRY = SerializableDataType.of(
 		new Codec<>() {
 
 			@Override
@@ -307,14 +303,14 @@ public final class SerializableDataTypes {
 		ITEM_TAG.packetCodec().xmap(Ingredient.TagEntry::new, Ingredient.TagEntry::tag)
 	);
 
-	/**
-	 * 	<p>A data type for decoding/encoding a {@link Ingredient.Entry} formatted as a string, either with a {@code #} prefix
-	 * 	 (to define an item tag, e.g: {@code #minecraft:meat}) or no prefix (to define an item,
-	 * 	 e.g: {@code minecraft:diamond}).</p>
-	 *
-	 * 	 <p>This data type also allows for defining an empty item stack entry (e.g: {@code minecraft:air}), compared to
-	 * 	 {@link Ingredient.Entry#CODEC}, which doesn't.</p>
-	 */
+	*//**
+     * 	<p>A data type for decoding/encoding a {@link Ingredient.Entry} formatted as a string, either with a {@code #} prefix
+     * 	 (to define an item tag, e.g: {@code #minecraft:meat}) or no prefix (to define an item,
+     * 	 e.g: {@code minecraft:diamond}).</p>
+     *
+     * 	 <p>This data type also allows for defining an empty item stack entry (e.g: {@code minecraft:air}), compared to
+     *     {@link Ingredient.Entry#CODEC}, which doesn't.</p>
+     *//*
 	public static final SerializableDataType<Ingredient.Entry> INLINE_INGREDIENT_ENTRY = SerializableDataType.of(
 		new Codec<>() {
 
@@ -391,15 +387,15 @@ public final class SerializableDataTypes {
 		)
 	);
 
-	/**
-	 * 	<p>A data type for decoding/encoding a {@link Ingredient.Entry} formatted as an object with a {@code tag} key
-	 * 	(to define an item tag, e.g: {@code {"tag": "minecraft:meat"}}) or an {@code item} key (to define an item, e.g:
-	 * 	{@code {"item": "minecraft:diamond"}}</p>
-	 *
-	 * 	 <p>This data type also allows for defining an empty item stack entry (e.g: {@code minecraft:air}), compared to
-	 * 	 {@link Ingredient.Entry#CODEC}, which doesn't. This is <b>deprecated</b> in favor of using
-	 * 	 {@link #INLINE_INGREDIENT_ENTRY} since vanilla will use a similar format in the future.</p>
-	 */
+	*//**
+     * 	<p>A data type for decoding/encoding a {@link Ingredient.Entry} formatted as an object with a {@code tag} key
+     * 	(to define an item tag, e.g: {@code {"tag": "minecraft:meat"}}) or an {@code item} key (to define an item, e.g:
+     *    {@code {"item": "minecraft:diamond"}}</p>
+     *
+     * 	 <p>This data type also allows for defining an empty item stack entry (e.g: {@code minecraft:air}), compared to
+     *     {@link Ingredient.Entry#CODEC}, which doesn't. This is <b>deprecated</b> in favor of using
+     *     {@link #INLINE_INGREDIENT_ENTRY} since vanilla will use a similar format in the future.</p>
+     *//*
 	@Deprecated(since = "1.14.0-alpha.7")
 	public static final SerializableDataType<Ingredient.Entry> OBJECT_INGREDIENT_ENTRY = SerializableDataType.compound(
 		new SerializableData()
@@ -448,11 +444,13 @@ public final class SerializableDataTypes {
 		}
 	);
 
-	/**
-	 * 	A data type for decoding/encoding an {@link Ingredient.Entry} either as an object or a string.
-	 * 	@see #INLINE_INGREDIENT_ENTRY
-	 *  @see #OBJECT_INGREDIENT_ENTRY
-	 */
+	*/
+    /**
+     * A data type for decoding/encoding an {@link //Ingredient.Entry} either as an object or a string.
+     *
+     * @see #//INLINE_INGREDIENT_ENTRY
+     * @see #//OBJECT_INGREDIENT_ENTRY
+     *//*
     public static final SerializableDataType<Ingredient.Entry> INGREDIENT_ENTRY = SerializableDataType.recursive(dataType -> SerializableDataType.of(
 		new Codec<>() {
 
@@ -481,101 +479,100 @@ public final class SerializableDataTypes {
     public static final SerializableDataType<List<Ingredient.Entry>> INGREDIENT_ENTRIES = INGREDIENT_ENTRY.list(1, Integer.MAX_VALUE);
 
 	private static final SerializableDataType<Ingredient.Entry[]> INGREDIENT_ENTRIES_ARRAY = INGREDIENT_ENTRIES.xmap(entries -> entries.toArray(Ingredient.Entry[]::new), ObjectArrayList::new);
-
+	*/
     @SuppressWarnings("UnstableApiUsage")
-	private static final Codec<CustomIngredient> CUSTOM_INGREDIENT_CODEC = CustomIngredientImpl.CODEC.dispatch(
-        CustomIngredientImpl.TYPE_KEY,
-        CustomIngredient::getSerializer,
-        serializer -> serializer.getCodec(false)
+    private static final Codec<CustomIngredient> CUSTOM_INGREDIENT_CODEC = CustomIngredientImpl.CODEC.dispatch(
+            CustomIngredientImpl.TYPE_KEY,
+            CustomIngredient::getSerializer,
+            CustomIngredientSerializer::getCodec
     );
 
     /**
-	 *  <p>A data type version of {@link Ingredient#DISALLOW_EMPTY_CODEC} that allows for
-	 *  empty item stacks (e.g: {@code "minecraft:air"}), and inline references for items/item tags.</p>
-	 *
-	 * 	@see #INLINE_INGREDIENT_ENTRY
-	 * 	@see #OBJECT_INGREDIENT_ENTRY
+     * <p>A data type version of {@link Ingredient#CODEC} that allows for
+     * empty item stacks (e.g: {@code "minecraft:air"}), and inline references for items/item tags.</p>
+     * <p>
+     * //@see #INLINE_INGREDIENT_ENTRY
+     * //@see #OBJECT_INGREDIENT_ENTRY
      */
     @SuppressWarnings("UnstableApiUsage")
-	public static final SerializableDataType<Ingredient> INGREDIENT = SerializableDataType.recursive(dataType -> SerializableDataType.of(
-		new Codec<>() {
+    public static final SerializableDataType<Ingredient> INGREDIENT = SerializableDataType.recursive(dataType -> SerializableDataType.of(
+            new Codec<>() {
 
-			@Override
-			public <T> DataResult<Pair<Ingredient, T>> decode(DynamicOps<T> ops, T input) {
+                @Override
+                public <T> DataResult<Pair<Ingredient, T>> decode(DynamicOps<T> ops, T input) {
 
-				//	Check if the input has the type key used by Fabric's custom ingredients
-				boolean hasFabricTypeKey = ops.getMap(input)
-					.map(map -> map.get(CustomIngredientImpl.TYPE_KEY))
-					.mapOrElse(Objects::nonNull, err -> false);
+                    //	Check if the input has the type key used by Fabric's custom ingredients
+                    boolean hasFabricTypeKey = ops.getMap(input)
+                            .map(map -> map.get(CustomIngredientImpl.TYPE_KEY))
+                            .mapOrElse(Objects::nonNull, err -> false);
 
-				//	...and if it does, decode the input as a Fabric custom ingredient
-				if (hasFabricTypeKey) {
-					return CUSTOM_INGREDIENT_CODEC.decode(ops, input)
-						.map(customIngredientAndInput -> customIngredientAndInput
-							.mapFirst(CustomIngredient::toVanilla));
-				}
+                    //	...and if it does, decode the input as a Fabric custom ingredient
+                    if (hasFabricTypeKey) {
+                        return CUSTOM_INGREDIENT_CODEC.decode(ops, input)
+                                .map(customIngredientAndInput -> customIngredientAndInput
+                                        .mapFirst(CustomIngredient::toVanilla));
+                    }
 
-				//	Otherwise, decode the input as a vanilla ingredient
-				else {
-					return INGREDIENT_ENTRIES_ARRAY.setRoot(dataType.isRoot()).codec().decode(ops, input)
+                    //	Otherwise, decode the input as a vanilla ingredient
+                    else {
+					/*return INGREDIENT_ENTRIES_ARRAY.setRoot(dataType.isRoot()).codec().decode(ops, input)
 						.map(entriesAndInput -> entriesAndInput
-							.mapFirst(Ingredient::new));
-				}
+							.mapFirst(Ingredient::new));*/
+                        return VANILLA_INGREDIENT.setRoot(dataType.isRoot()).codec().decode(ops, input);
+                    }
 
-			}
-
-			@Override
-			public <T> DataResult<T> encode(Ingredient input, DynamicOps<T> ops, T prefix) {
-
-                if (input.getCustomIngredient() != null) {
-                    return CUSTOM_INGREDIENT_CODEC.encode(input.getCustomIngredient(), ops, prefix);
                 }
 
-                else {
-					return INGREDIENT_ENTRIES_ARRAY.setRoot(dataType.isRoot()).codec().encode(((IngredientAccessor) input).getEntries(), ops, prefix);
+                @Override
+                public <T> DataResult<T> encode(Ingredient input, DynamicOps<T> ops, T prefix) {
+
+                    if (input.getCustomIngredient() != null) {
+                        return CUSTOM_INGREDIENT_CODEC.encode(input.getCustomIngredient(), ops, prefix);
+                    } else {
+                        //return INGREDIENT_ENTRIES_ARRAY.setRoot(dataType.isRoot()).codec().encode(((IngredientAccessor) input).getEntries(), ops, prefix);
+                        return VANILLA_INGREDIENT.setRoot(dataType.isRoot()).codec().encode(input, ops, prefix);
+                    }
+
                 }
 
-			}
-
-		},
-        new CustomIngredientPacketCodec(ItemStack.OPTIONAL_LIST_PACKET_CODEC.xmap(
+            },
+            new CustomIngredientPacketCodec(Ingredient.PACKET_CODEC)
+        /*new CustomIngredientPacketCodec(ItemStack.OPTIONAL_LIST_PACKET_CODEC.xmap(
             itemStacks -> Ingredient.ofEntries(itemStacks
                 .stream()
                 .map(Ingredient.StackEntry::new)),
             ingredient ->
                 Arrays.asList(ingredient.getMatchingStacks())
-        ))
+        ))*/
     ));
 
     /**
-     *  A data type version of {@link Ingredient#DISALLOW_EMPTY_CODEC}
+     * A data type version of {@link Ingredient#CODEC}
      */
-    public static final SerializableDataType<Ingredient> VANILLA_INGREDIENT = SerializableDataType.of(Ingredient.DISALLOW_EMPTY_CODEC, Ingredient.PACKET_CODEC);
+    public static final SerializableDataType<Ingredient> VANILLA_INGREDIENT = SerializableDataType.of(Ingredient.CODEC, Ingredient.PACKET_CODEC);
 
     public static final SerializableDataType<Block> BLOCK = SerializableDataType.registry(Registries.BLOCK);
 
     public static final SerializableDataType<BlockState> BLOCK_STATE = STRING.comapFlatMap(
-        str -> {
+            str -> {
 
-            try {
-                return DataResult.success(BlockArgumentParser.block(Registries.BLOCK.getReadOnlyWrapper(), str, false).blockState());
-            }
+                try {
+                    return DataResult.success(BlockArgumentParser.block(Registries.BLOCK, str, false).blockState());
+                } catch (Exception e) {
+                    return DataResult.error(e::getMessage);
+                }
 
-            catch (Exception e) {
-                return DataResult.error(e::getMessage);
-            }
-
-        },
-        BlockArgumentParser::stringifyBlockState
+            },
+            BlockArgumentParser::stringifyBlockState
     );
 
     public static final SerializableDataType<RegistryKey<DamageType>> DAMAGE_TYPE = SerializableDataType.registryKey(RegistryKeys.DAMAGE_TYPE);
 
     public static final SerializableDataType<TagKey<EntityType<?>>> ENTITY_GROUP_TAG = SerializableDataType.mapped(ImmutableBiMap.of(
-        "undead", EntityTypeTags.UNDEAD,
-        "arthropod", EntityTypeTags.ARTHROPOD,
-        "illager", EntityTypeTags.ILLAGER,
-        "aquatic", EntityTypeTags.AQUATIC
+            "undead", EntityTypeTags.UNDEAD,
+            "arthropod", EntityTypeTags.ARTHROPOD,
+            "illager", EntityTypeTags.ILLAGER,
+            "aquatic", EntityTypeTags.AQUATIC
     ));
 
     public static final SerializableDataType<EquipmentSlot> EQUIPMENT_SLOT = SerializableDataType.enumValue(EquipmentSlot.class);
@@ -586,15 +583,15 @@ public final class SerializableDataTypes {
 
     public static final SerializableDataType<EnumSet<AttributeModifierSlot>> ATTRIBUTE_MODIFIER_SLOT_SET = SerializableDataType.enumSet(ATTRIBUTE_MODIFIER_SLOT);
 
-    public static final SerializableDataType<SoundEvent> SOUND_EVENT = IDENTIFIER.xmap(SoundEvent::of, SoundEvent::getId);
+    public static final SerializableDataType<SoundEvent> SOUND_EVENT = IDENTIFIER.xmap(SoundEvent::of, SoundEvent::id);
 
     public static final SerializableDataType<EntityType<?>> ENTITY_TYPE = SerializableDataType.registry(Registries.ENTITY_TYPE);
 
     public static final SerializableDataType<ParticleType<?>> PARTICLE_TYPE = SerializableDataType.registry(Registries.PARTICLE_TYPE);
 
     public static final SerializableDataType<NbtElement> NBT_ELEMENT = SerializableDataType.of(
-        Codec.PASSTHROUGH.xmap(dynamic -> dynamic.convert(NbtOps.INSTANCE).getValue(), nbtElement -> new Dynamic<>(NbtOps.INSTANCE, nbtElement.copy())),
-        PacketCodecs.nbt(NbtSizeTracker::ofUnlimitedBytes).cast()
+            Codec.PASSTHROUGH.xmap(dynamic -> dynamic.convert(NbtOps.INSTANCE).getValue(), nbtElement -> new Dynamic<>(NbtOps.INSTANCE, nbtElement.copy())),
+            PacketCodecs.nbt(NbtSizeTracker::ofUnlimitedBytes).cast()
     );
 
     public static final SerializableDataType<NbtCompound> NBT_COMPOUND = SerializableDataType.of(Codec.withAlternative(NbtCompound.CODEC, StringNbtReader.NBT_COMPOUND_CODEC), PacketCodecs.nbtCompound(NbtSizeTracker::ofUnlimitedBytes).cast());
@@ -602,115 +599,103 @@ public final class SerializableDataTypes {
     public static final SerializableDataType<ArgumentWrapper<NbtPathArgumentType.NbtPath>> NBT_PATH = SerializableDataType.argumentType(NbtPathArgumentType.nbtPath());
 
     public static final CompoundSerializableDataType<ParticleEffect> PARTICLE_EFFECT = new CompoundSerializableDataType<>(
-		new SerializableData()
-			.add("type", PARTICLE_TYPE)
-			.add("params", NBT_COMPOUND, new NbtCompound()),
-		serializableData -> new MapCodec<>() {
+            new SerializableData()
+                    .add("type", PARTICLE_TYPE)
+                    .add("params", NBT_COMPOUND, new NbtCompound()),
+            serializableData -> new MapCodec<>() {
 
-			@Override
-			public <T> DataResult<ParticleEffect> decode(DynamicOps<T> ops, MapLike<T> input) {
-				return serializableData.decode(ops, input).flatMap(data -> {
+                @Override
+                public <T> DataResult<ParticleEffect> decode(DynamicOps<T> ops, MapLike<T> input) {
+                    return serializableData.decode(ops, input).flatMap(data -> {
 
-					ParticleType<?> particleType = data.get("type");
-					NbtCompound paramsNbt = data.get("params");
+                        ParticleType<?> particleType = data.get("type");
+                        NbtCompound paramsNbt = data.get("params");
 
-					Identifier particleTypeId = Objects.requireNonNull(Registries.PARTICLE_TYPE.getId(particleType), "Particle type (" + particleType + ") is not registered?");
-					paramsNbt.putString("type", particleTypeId.toString());
+                        Identifier particleTypeId = Objects.requireNonNull(Registries.PARTICLE_TYPE.getId(particleType), "Particle type (" + particleType + ") is not registered?");
+                        paramsNbt.putString("type", particleTypeId.toString());
 
-					if (particleType instanceof SimpleParticleType simpleParticleType) {
-						return DataResult.success(simpleParticleType);
-					}
+                        if (particleType instanceof SimpleParticleType simpleParticleType) {
+                            return DataResult.success(simpleParticleType);
+                        } else if (paramsNbt.getSize() <= 1) {
+                            return DataResult.error(() -> "Particle effect \"" + particleTypeId + "\" requires parameters!");
+                        } else if (ops instanceof RegistryOps<T> registryOps) {
+                            return ParticleTypes.TYPE_CODEC.parse(registryOps.withDelegate(NbtOps.INSTANCE), paramsNbt);
+                        } else {
+                            return DataResult.error(() -> "Can't decode parameterized particle effects without registry ops!");
+                        }
 
-					else if (paramsNbt.getSize() <= 1) {
-						return DataResult.error(() -> "Particle effect \"" + particleTypeId + "\" requires parameters!");
-					}
+                    });
+                }
 
-					else if (ops instanceof RegistryOps<T> registryOps) {
-						return ParticleTypes.TYPE_CODEC.parse(registryOps.withDelegate(NbtOps.INSTANCE), paramsNbt);
-					}
+                @Override
+                public <T> RecordBuilder<T> encode(ParticleEffect input, DynamicOps<T> ops, RecordBuilder<T> prefix) {
 
-					else {
-						return DataResult.error(() -> "Can't decode parameterized particle effects without registry ops!");
-					}
+                    ParticleType<?> particleType = input.getType();
+                    Identifier particleTypeId = Objects.requireNonNull(Registries.PARTICLE_TYPE.getId(particleType), "Particle type (" + particleType + ") is not registered?");
 
-				});
-			}
+                    prefix.add("type", IDENTIFIER.write(ops, particleTypeId));
 
-			@Override
-			public <T> RecordBuilder<T> encode(ParticleEffect input, DynamicOps<T> ops, RecordBuilder<T> prefix) {
+                    if (particleType instanceof SimpleParticleType simpleParticleType) {
+                        return prefix;
+                    } else if (ops instanceof RegistryOps<T> registryOps) {
 
-				ParticleType<?> particleType = input.getType();
-				Identifier particleTypeId = Objects.requireNonNull(Registries.PARTICLE_TYPE.getId(particleType), "Particle type (" + particleType + ") is not registered?");
+                        RegistryOps<NbtElement> nbtOps = registryOps.withDelegate(NbtOps.INSTANCE);
 
-				prefix.add("type", IDENTIFIER.write(ops, particleTypeId));
+                        return prefix.add("params", ParticleTypes.TYPE_CODEC.encodeStart(nbtOps, input)
+                                .flatMap(nbtElement -> nbtElement instanceof NbtCompound nbtCompound ? DataResult.success(nbtCompound) : DataResult.error(() -> "Not a compound tag: " + nbtElement))
+                                .ifSuccess(nbtCompound -> nbtCompound.remove("type"))
+                                .map(nbtCompound -> nbtOps.convertTo(ops, nbtCompound)));
 
-				if (particleType instanceof SimpleParticleType simpleParticleType) {
-					return prefix;
-				}
+                    } else {
+                        return prefix.withErrorsFrom(DataResult.error(() -> "Can't encode parameterized particle effects without registry ops!"));
+                    }
 
-				else if (ops instanceof RegistryOps<T> registryOps) {
+                }
 
-					RegistryOps<NbtElement> nbtOps = registryOps.withDelegate(NbtOps.INSTANCE);
+                @Override
+                public <T> Stream<T> keys(DynamicOps<T> ops) {
+                    return serializableData.keys(ops);
+                }
 
-					return prefix.add("params", ParticleTypes.TYPE_CODEC.encodeStart(nbtOps, input)
-						.flatMap(nbtElement -> nbtElement instanceof NbtCompound nbtCompound ? DataResult.success(nbtCompound) : DataResult.error(() -> "Not a compound tag: " + nbtElement))
-						.ifSuccess(nbtCompound -> nbtCompound.remove("type"))
-						.map(nbtCompound -> nbtOps.convertTo(ops, nbtCompound)));
-
-				}
-
-				else {
-					return prefix.withErrorsFrom(DataResult.error(() -> "Can't encode parameterized particle effects without registry ops!"));
-				}
-
-			}
-
-			@Override
-			public <T> Stream<T> keys(DynamicOps<T> ops) {
-				return serializableData.keys(ops);
-			}
-
-		},
-		serializableData -> ParticleTypes.PACKET_CODEC.cast()
-	);
+            },
+            serializableData -> ParticleTypes.PACKET_CODEC.cast()
+    );
 
     public static final SerializableDataType<ParticleEffect> PARTICLE_EFFECT_OR_TYPE = SerializableDataType.recursive(self -> {
-		SerializableDataType<ParticleEffect> dataType = PARTICLE_EFFECT.setRoot(self.isRoot());
-		return SerializableDataType.of(
-			new Codec<>() {
+        SerializableDataType<ParticleEffect> dataType = PARTICLE_EFFECT.setRoot(self.isRoot());
+        return SerializableDataType.of(
+                new Codec<>() {
 
-				@Override
-				public <T> DataResult<Pair<ParticleEffect, T>> decode(DynamicOps<T> ops, T input) {
+                    @Override
+                    public <T> DataResult<Pair<ParticleEffect, T>> decode(DynamicOps<T> ops, T input) {
 
-					if (ops.getStringValue(input).isSuccess()) {
-						return PARTICLE_TYPE.codec().parse(ops, input)
-							.flatMap(type -> type instanceof SimpleParticleType simpleType
-								? DataResult.success(simpleType)
-								: DataResult.error(() -> "Particle effect \"" + Registries.PARTICLE_TYPE.getId(type) + "\" requires parameters!"))
-							.map(type -> Pair.of(type, input));
-					}
+                        if (ops.getStringValue(input).isSuccess()) {
+                            return PARTICLE_TYPE.codec().parse(ops, input)
+                                    .flatMap(type -> type instanceof SimpleParticleType simpleType
+                                            ? DataResult.success(simpleType)
+                                            : DataResult.error(() -> "Particle effect \"" + Registries.PARTICLE_TYPE.getId(type) + "\" requires parameters!"))
+                                    .map(type -> Pair.of(type, input));
+                        } else {
+                            return dataType.codec().decode(ops, input);
+                        }
 
-					else {
-						return dataType.codec().decode(ops, input);
-					}
+                    }
 
-				}
+                    @Override
+                    public <T> DataResult<T> encode(ParticleEffect input, DynamicOps<T> ops, T prefix) {
+                        return dataType.codec().encode(input, ops, prefix);
+                    }
 
-				@Override
-				public <T> DataResult<T> encode(ParticleEffect input, DynamicOps<T> ops, T prefix) {
-					return dataType.codec().encode(input, ops, prefix);
-				}
-
-			},
-			dataType.packetCodec()
-		);
-	});
+                },
+                dataType.packetCodec()
+        );
+    });
 
     public static final SerializableDataType<ComponentChanges> COMPONENT_CHANGES = SerializableDataType.of(ComponentChanges.CODEC, ComponentChanges.PACKET_CODEC);
 
-	public static final SerializableDataType<ItemStack> UNCOUNTED_ITEM_STACK = SerializableDataType.lazy(() -> SerializableDataType.compound(DataObjectFactories.UNCOUNTED_ITEM_STACK));
+    public static final SerializableDataType<ItemStack> UNCOUNTED_ITEM_STACK = SerializableDataType.lazy(() -> SerializableDataType.compound(DataObjectFactories.UNCOUNTED_ITEM_STACK));
 
-	public static final SerializableDataType<ItemStack> ITEM_STACK = SerializableDataType.lazy(() -> SerializableDataType.compound(DataObjectFactories.ITEM_STACK));
+    public static final SerializableDataType<ItemStack> ITEM_STACK = SerializableDataType.lazy(() -> SerializableDataType.compound(DataObjectFactories.ITEM_STACK));
 
     public static final SerializableDataType<List<ItemStack>> ITEM_STACKS = ITEM_STACK.list();
 
@@ -718,80 +703,76 @@ public final class SerializableDataTypes {
 
     public static final SerializableDataType<List<Text>> TEXTS = TEXT.list();
 
-	public static final SerializableDataType<RecipeSerializer<?>> RECIPE_SERIALIZER = SerializableDataType.registry(Registries.RECIPE_SERIALIZER, Identifier.DEFAULT_NAMESPACE, null, (recipeSerializers, id) -> "Recipe serializer \"" + id + "\" is not registered!");
+    public static final SerializableDataType<RecipeSerializer<?>> RECIPE_SERIALIZER = SerializableDataType.registry(Registries.RECIPE_SERIALIZER, Identifier.DEFAULT_NAMESPACE, null, (recipeSerializers, id) -> "Recipe serializer \"" + id + "\" is not registered!");
 
-	public static final CompoundSerializableDataType<Recipe<?>> RECIPE = new CompoundSerializableDataType<>(
-		new SerializableData()
-			.add("type", RECIPE_SERIALIZER),
-		serializableData -> new MapCodec<>() {
+    public static final CompoundSerializableDataType<Recipe<?>> RECIPE = new CompoundSerializableDataType<>(
+            new SerializableData()
+                    .add("type", RECIPE_SERIALIZER),
+            serializableData -> new MapCodec<>() {
 
-			@Override
-			public <T> Stream<T> keys(DynamicOps<T> ops) {
-				return serializableData.keys(ops);
-			}
+                @Override
+                public <T> Stream<T> keys(DynamicOps<T> ops) {
+                    return serializableData.keys(ops);
+                }
 
-			@Override
-			public <T> DataResult<Recipe<?>> decode(DynamicOps<T> ops, MapLike<T> input) {
-				return serializableData.decode(ops, input)
-					.map(data -> (RecipeSerializer<?>) data.get("type"))
-					.flatMap(recipeSerializer -> recipeSerializer.codec().decode(ops, input)
-						.map(Function.identity()));
-			}
+                @Override
+                public <T> DataResult<Recipe<?>> decode(DynamicOps<T> ops, MapLike<T> input) {
+                    return serializableData.decode(ops, input)
+                            .map(data -> (RecipeSerializer<?>) data.get("type"))
+                            .flatMap(recipeSerializer -> recipeSerializer.codec().decode(ops, input)
+                                    .map(Function.identity()));
+                }
 
-			@SuppressWarnings("unchecked")
-			@Override
-			public <T> RecordBuilder<T> encode(Recipe<?> input, DynamicOps<T> ops, RecordBuilder<T> prefix) {
+                @SuppressWarnings("unchecked")
+                @Override
+                public <T> RecordBuilder<T> encode(Recipe<?> input, DynamicOps<T> ops, RecordBuilder<T> prefix) {
 
-				RecipeSerializer<Recipe<?>> recipeSerializer = (RecipeSerializer<Recipe<?>>) input.getSerializer();
+                    RecipeSerializer<Recipe<?>> recipeSerializer = (RecipeSerializer<Recipe<?>>) input.getSerializer();
 
-				prefix.add("type", RECIPE_SERIALIZER.write(ops, recipeSerializer));
-				recipeSerializer.codec().encode(input, ops, prefix);
+                    prefix.add("type", RECIPE_SERIALIZER.write(ops, recipeSerializer));
+                    recipeSerializer.codec().encode(input, ops, prefix);
 
-				return prefix;
+                    return prefix;
 
-			}
+                }
 
-		},
-		serializableData -> Recipe.PACKET_CODEC
-	);
+            },
+            serializableData -> Recipe.PACKET_CODEC
+    );
 
     public static final CompoundSerializableDataType<RecipeEntry<?>> RECIPE_ENTRY = new CompoundSerializableDataType<>(
-		RECIPE.serializableData().copy()
-			.add("id", IDENTIFIER),
-		serializableData -> {
-			CompoundSerializableDataType<Recipe<?>> recipeDataType = RECIPE.setRoot(serializableData.isRoot());
-			return new MapCodec<>() {
+            RECIPE.serializableData().copy()
+                    .add("id", IDENTIFIER),
+            serializableData -> {
+                CompoundSerializableDataType<Recipe<?>> recipeDataType = RECIPE.setRoot(serializableData.isRoot());
+                return new MapCodec<>() {
 
-				@Override
-				public <T> Stream<T> keys(DynamicOps<T> ops) {
-					return serializableData.keys(ops);
-				}
+                    @Override
+                    public <T> Stream<T> keys(DynamicOps<T> ops) {
+                        return serializableData.keys(ops);
+                    }
 
-				@Override
-				public <T> DataResult<RecipeEntry<?>> decode(DynamicOps<T> ops, MapLike<T> input) {
-					return serializableData.decode(ops, input)
-						.flatMap(data -> recipeDataType.mapCodec().decode(ops, input)
-							.map(recipe -> new RecipeEntry<>(data.get("id"), recipe)));
-				}
+                    @Override
+                    public <T> DataResult<RecipeEntry<?>> decode(DynamicOps<T> ops, MapLike<T> input) {
+                        return serializableData.decode(ops, input)
+                                .flatMap(data -> recipeDataType.mapCodec().decode(ops, input)
+                                        .map(recipe -> new RecipeEntry<>(RegistryKey.of(RegistryKeys.RECIPE, data.get("id")), recipe)));
+                    }
 
-				@Override
-				public <T> RecordBuilder<T> encode(RecipeEntry<?> input, DynamicOps<T> ops, RecordBuilder<T> prefix) {
+                    @Override
+                    public <T> RecordBuilder<T> encode(RecipeEntry<?> input, DynamicOps<T> ops, RecordBuilder<T> prefix) {
 
-					prefix.add("id", IDENTIFIER.write(ops, input.id()));
-					recipeDataType.mapCodec().encode(input.value(), ops, prefix);
+                        prefix.add("id", IDENTIFIER.write(ops, input.id().getValue()));
+                        recipeDataType.mapCodec().encode(input.value(), ops, prefix);
 
-					return prefix;
+                        return prefix;
 
-				}
+                    }
 
-			};
-		},
-		serializableData -> PacketCodec.tuple(
-			Identifier.PACKET_CODEC, RecipeEntry::id,
-			Recipe.PACKET_CODEC, RecipeEntry::value,
-			RecipeEntry::new
-		)
-	);
+                };
+            },
+            serializableData -> RecipeEntry.PACKET_CODEC
+    );
 
     public static final SerializableDataType<GameEvent> GAME_EVENT = SerializableDataType.registry(Registries.GAME_EVENT);
 
@@ -808,70 +789,69 @@ public final class SerializableDataTypes {
     public static final SerializableDataType<CameraSubmersionType> CAMERA_SUBMERSION_TYPE = SerializableDataType.enumValue(CameraSubmersionType.class);
 
     public static final SerializableDataType<Hand> HAND = SerializableDataType.enumValue(Hand.class, ImmutableMap.of(
-        "mainhand", Hand.MAIN_HAND,
-        "offhand", Hand.OFF_HAND
+            "mainhand", Hand.MAIN_HAND,
+            "offhand", Hand.OFF_HAND
     ));
 
     public static final SerializableDataType<EnumSet<Hand>> HAND_SET = SerializableDataType.enumSet(HAND);
 
-    public static final SerializableDataType<ActionResult> ACTION_RESULT = SerializableDataType.enumValue(ActionResult.class);
+    public static final SerializableDataType<ActionResult> ACTION_RESULT = STRING.comapFlatMap(s -> switch (s) {
+                case "success" -> DataResult.success(ActionResult.SUCCESS);
+                case "success_server" -> DataResult.success(ActionResult.SUCCESS_SERVER);
+                case "consume" -> DataResult.success(ActionResult.CONSUME);
+                case "fail" -> DataResult.success(ActionResult.FAIL);
+                case "pass" -> DataResult.success(ActionResult.PASS);
+                case "pass_to_default_block_action" -> DataResult.success(ActionResult.PASS_TO_DEFAULT_BLOCK_ACTION);
+                default -> DataResult.error(() -> s + "is not a valid Action result!");
+            }, actionResult -> {
+                if(actionResult == ActionResult.SUCCESS) {
+                    return "success";
+                } else if(actionResult == ActionResult.SUCCESS_SERVER) {
+                    return "success_server";
+                } else if(actionResult == ActionResult.CONSUME) {
+                    return "consume";
+                } else if(actionResult == ActionResult.FAIL) {
+                    return "fail";
+                } else if(actionResult == ActionResult.PASS_TO_DEFAULT_BLOCK_ACTION) {
+                    return "pass_to_default_block_action";
+                } else {
+                    return "pass";
+                }
+            });
 
     public static final SerializableDataType<UseAction> USE_ACTION = SerializableDataType.enumValue(UseAction.class);
 
-	@Deprecated(forRemoval = true)
+    @Deprecated(forRemoval = true)
     public static final CompoundSerializableDataType<StatusEffectChance> STATUS_EFFECT_CHANCE = SerializableDataType.compound(
-        new SerializableData()
-            .add("effect", STATUS_EFFECT_INSTANCE)
-            .add("chance", FLOAT, 1.0F),
-        data -> new StatusEffectChance(
-            data.get("effect"),
-            data.getFloat("chance")
-        ),
-        (effectChance, serializableData) -> serializableData.instance()
-            .set("effect", effectChance.statusEffectInstance())
-            .set("chance", effectChance.chance())
+            new SerializableData()
+                    .add("effect", STATUS_EFFECT_INSTANCE)
+                    .add("chance", FLOAT, 1.0F),
+            data -> new StatusEffectChance(
+                    data.get("effect"),
+                    data.getFloat("chance")
+            ),
+            (effectChance, serializableData) -> serializableData.instance()
+                    .set("effect", effectChance.statusEffectInstance())
+                    .set("chance", effectChance.chance())
     );
 
-	@Deprecated(forRemoval = true)
+    @Deprecated(forRemoval = true)
     public static final SerializableDataType<List<StatusEffectChance>> STATUS_EFFECT_CHANCES = STATUS_EFFECT_CHANCE.list();
 
-    public static final SerializableDataType<FoodComponent.StatusEffectEntry> FOOD_STATUS_EFFECT_ENTRY = SerializableDataType.of(FoodComponent.StatusEffectEntry.CODEC, FoodComponent.StatusEffectEntry.PACKET_CODEC);
-
-    public static final SerializableDataType<List<FoodComponent.StatusEffectEntry>> FOOD_STATUS_EFFECT_ENTRIES = FOOD_STATUS_EFFECT_ENTRY.list();
-
     public static final CompoundSerializableDataType<FoodComponent> FOOD_COMPONENT = SerializableDataType.compound(
-        new SerializableData()
-            .add("nutrition", NON_NEGATIVE_INT)
-            .add("saturation", FLOAT)
-            .add("can_always_eat", BOOLEAN, false)
-            .add("eat_seconds", NON_NEGATIVE_FLOAT, 1.6F)
-            .addSupplied("using_converts_to", UNCOUNTED_ITEM_STACK.optional(), Optional::empty)
-            .add("effect", FOOD_STATUS_EFFECT_ENTRY, null)
-            .add("effects", FOOD_STATUS_EFFECT_ENTRIES, null),
-        data -> {
-
-            List<FoodComponent.StatusEffectEntry> effects = new ArrayList<>();
-
-            data.<FoodComponent.StatusEffectEntry>ifPresent("effect", effects::add);
-            data.<List<FoodComponent.StatusEffectEntry>>ifPresent("effects", effects::addAll);
-
-            return new FoodComponent(
-                data.getInt("nutrition"),
-                data.getFloat("saturation"),
-                data.getBoolean("can_always_eat"),
-                data.getFloat("eat_seconds"),
-                data.get("using_converts_to"),
-                effects
-            );
-
-        },
-        (foodComponent, serializableData) -> serializableData.instance()
-            .set("nutrition", foodComponent.nutrition())
-            .set("saturation", foodComponent.saturation())
-            .set("can_always_eat", foodComponent.canAlwaysEat())
-            .set("eat_seconds", foodComponent.eatSeconds())
-            .set("using_converts_to", foodComponent.usingConvertsTo())
-            .set("effects", foodComponent.effects())
+            new SerializableData()
+                    .add("nutrition", NON_NEGATIVE_INT)
+                    .add("saturation", FLOAT)
+                    .add("can_always_eat", BOOLEAN, false),
+            data -> new FoodComponent(
+                    data.getInt("nutrition"),
+                    data.getFloat("saturation"),
+                    data.getBoolean("can_always_eat")
+            ),
+            (foodComponent, serializableData) -> serializableData.instance()
+                    .set("nutrition", foodComponent.nutrition())
+                    .set("saturation", foodComponent.saturation())
+                    .set("can_always_eat", foodComponent.canAlwaysEat())
     );
 
     public static final SerializableDataType<Direction> DIRECTION = SerializableDataType.enumValue(Direction.class);
@@ -879,18 +859,16 @@ public final class SerializableDataTypes {
     public static final SerializableDataType<EnumSet<Direction>> DIRECTION_SET = SerializableDataType.enumSet(DIRECTION);
 
     public static final SerializableDataType<Class<?>> CLASS = STRING.comapFlatMap(
-        str -> {
+            str -> {
 
-            try {
-                return DataResult.success(Class.forName(str));
-            }
+                try {
+                    return DataResult.success(Class.forName(str));
+                } catch (ClassNotFoundException ignored) {
+                    return DataResult.error(() -> "Specified class does not exist: \"" + str + "\"");
+                }
 
-            catch (ClassNotFoundException ignored) {
-                return DataResult.error(() -> "Specified class does not exist: \"" + str + "\"");
-            }
-
-        },
-        Class::getName
+            },
+            Class::getName
     );
 
     public static final SerializableDataType<RaycastContext.ShapeType> SHAPE_TYPE = SerializableDataType.enumValue(RaycastContext.ShapeType.class);
@@ -907,108 +885,104 @@ public final class SerializableDataTypes {
 
     @SuppressWarnings({"rawtypes", "unchecked"})
     public static final CompoundSerializableDataType<Stat<?>> STAT = SerializableDataType.compound(
-        new SerializableData()
-            .add("type", STAT_TYPE)
-            .add("id", IDENTIFIER),
-        data -> {
+            new SerializableData()
+                    .add("type", STAT_TYPE)
+                    .add("id", IDENTIFIER),
+            data -> {
 
-            StatType statType = data.get("type");
-            Identifier statId = data.getId("id");
+                StatType statType = data.get("type");
+                Identifier statId = data.getId("id");
 
-            Registry statRegistry = statType.getRegistry();
-            Identifier statTypeId = Objects.requireNonNull(Registries.STAT_TYPE.getId(statType));
+                Registry statRegistry = statType.getRegistry();
+                Identifier statTypeId = Objects.requireNonNull(Registries.STAT_TYPE.getId(statType));
 
-            try {
-                return (Stat<?>) statRegistry.getOrEmpty(statId)
-                    .map(statType::getOrCreateStat)
-                    .orElseThrow();
+                try {
+                    return (Stat<?>) statRegistry.getOptionalValue(statId)
+                            .map(statType::getOrCreateStat)
+                            .orElseThrow();
+                } catch (Exception e) {
+                    throw new IllegalArgumentException("Desired stat \"" + statId + "\" does not exist in stat type \"" + statTypeId + "\"");
+                }
+
+            },
+            (stat, serializableData) -> {
+
+                SerializableData.Instance data = serializableData.instance();
+
+                StatType statType = stat.getType();
+                Optional<Identifier> optId = Optional.ofNullable(statType.getRegistry().getId(stat.getValue()));
+
+                data.set("type", statType);
+                optId.ifPresent(id -> data.set("id", id));
+
+                return data;
+
             }
-
-            catch (Exception e) {
-                throw new IllegalArgumentException("Desired stat \"" + statId + "\" does not exist in stat type \"" + statTypeId + "\"");
-            }
-
-        },
-        (stat, serializableData) -> {
-
-            SerializableData.Instance data = serializableData.instance();
-
-            StatType statType = stat.getType();
-            Optional<Identifier> optId = Optional.ofNullable(statType.getRegistry().getId(stat.getValue()));
-
-            data.set("type", statType);
-            optId.ifPresent(id -> data.set("id", id));
-
-            return data;
-
-        }
     );
 
     public static final SerializableDataType<TagKey<Biome>> BIOME_TAG = SerializableDataType.tagKey(RegistryKeys.BIOME);
 
-	public static final SerializableDataType<Codecs.TagEntryId> TAG_ENTRY_ID = STRING.comapFlatMap(
-		str -> str.startsWith("#")
-			? DynamicIdentifier.ofResult(str.substring(1)).map(id -> new Codecs.TagEntryId(id, true))
-			: DynamicIdentifier.ofResult(str).map(id -> new Codecs.TagEntryId(id, false)),
-		Codecs.TagEntryId::toString
-	);
+    public static final SerializableDataType<Codecs.TagEntryId> TAG_ENTRY_ID = STRING.comapFlatMap(
+            str -> str.startsWith("#")
+                    ? DynamicIdentifier.ofResult(str.substring(1)).map(id -> new Codecs.TagEntryId(id, true))
+                    : DynamicIdentifier.ofResult(str).map(id -> new Codecs.TagEntryId(id, false)),
+            Codecs.TagEntryId::toString
+    );
 
-	public static final CompoundSerializableDataType<TagEntry> OBJECT_TAG_ENTRY = SerializableDataType.compound(
-		new SerializableData()
-			.add("id", TAG_ENTRY_ID)
-			.add("required", BOOLEAN, true),
-		data -> new TagEntry(
-			data.get("id"),
-			data.get("required")
-		),
-		(tagEntry, serializableData) -> serializableData.instance()
-			.set("id", ((TagEntryAccessor) tagEntry).callGetIdForCodec())
-			.set("required", ((TagEntryAccessor) tagEntry).isRequired())
-	);
+    public static final CompoundSerializableDataType<TagEntry> OBJECT_TAG_ENTRY = SerializableDataType.compound(
+            new SerializableData()
+                    .add("id", TAG_ENTRY_ID)
+                    .add("required", BOOLEAN, true),
+            data -> new TagEntry(
+                    data.get("id"),
+                    data.get("required")
+            ),
+            (tagEntry, serializableData) -> serializableData.instance()
+                    .set("id", ((TagEntryAccessor) tagEntry).callGetIdForCodec())
+                    .set("required", ((TagEntryAccessor) tagEntry).isRequired())
+    );
 
     public static final SerializableDataType<TagEntry> TAG_ENTRY = SerializableDataType.recursive(dataType -> SerializableDataType.of(
-		new Codec<>() {
+            new Codec<>() {
 
-			@Override
-			public <T> DataResult<Pair<TagEntry, T>> decode(DynamicOps<T> ops, T input) {
+                @Override
+                public <T> DataResult<Pair<TagEntry, T>> decode(DynamicOps<T> ops, T input) {
 
-				DataResult<Pair<TagEntry, T>> entryIdResult = TAG_ENTRY_ID.codec().decode(ops, input)
-					.map(entryIdAndInput -> entryIdAndInput
-						.mapFirst(entryId -> new TagEntry(entryId, true)));
-				if (entryIdResult.isSuccess()) {
-					return entryIdResult;
-				}
+                    DataResult<Pair<TagEntry, T>> entryIdResult = TAG_ENTRY_ID.codec().decode(ops, input)
+                            .map(entryIdAndInput -> entryIdAndInput
+                                    .mapFirst(entryId -> new TagEntry(entryId, true)));
+                    if (entryIdResult.isSuccess()) {
+                        return entryIdResult;
+                    }
 
-				DataResult<Pair<TagEntry, T>> entryResult = OBJECT_TAG_ENTRY.setRoot(dataType.isRoot()).codec().decode(ops, input);
-				if (entryResult.isSuccess()) {
-					return OBJECT_TAG_ENTRY.codec().decode(ops, input);
-				}
+                    DataResult<Pair<TagEntry, T>> entryResult = OBJECT_TAG_ENTRY.setRoot(dataType.isRoot()).codec().decode(ops, input);
+                    if (entryResult.isSuccess()) {
+                        return OBJECT_TAG_ENTRY.codec().decode(ops, input);
+                    }
 
-				StringBuilder errorBuilder = new StringBuilder("Couldn't decode tag entry");
+                    StringBuilder errorBuilder = new StringBuilder("Couldn't decode tag entry");
 
-				entryIdResult.ifError(error -> errorBuilder.append(" as an ID (").append(error.message()).append(")"));
-				entryResult.ifError(error -> errorBuilder.append(" or as an object (").append(error.message()).append(")"));
+                    entryIdResult.ifError(error -> errorBuilder.append(" as an ID (").append(error.message()).append(")"));
+                    entryResult.ifError(error -> errorBuilder.append(" or as an object (").append(error.message()).append(")"));
 
-				return DataResult.error(errorBuilder::toString);
+                    return DataResult.error(errorBuilder::toString);
 
-			}
+                }
 
-			@Override
-			public <T> DataResult<T> encode(TagEntry input, DynamicOps<T> ops, T prefix) {
+                @Override
+                public <T> DataResult<T> encode(TagEntry input, DynamicOps<T> ops, T prefix) {
 
-				if (((TagEntryAccessor) input).isRequired()) {
-					return TAG_ENTRY_ID.codec().encode(((TagEntryAccessor) input).callGetIdForCodec(), ops, prefix);
-				}
+                    if (((TagEntryAccessor) input).isRequired()) {
+                        return TAG_ENTRY_ID.codec().encode(((TagEntryAccessor) input).callGetIdForCodec(), ops, prefix);
+                    } else {
+                        return OBJECT_TAG_ENTRY.setRoot(dataType.isRoot()).codec().encode(input, ops, prefix);
+                    }
 
-				else {
-					return OBJECT_TAG_ENTRY.setRoot(dataType.isRoot()).codec().encode(input, ops, prefix);
-				}
+                }
 
-			}
-
-		},
-		CalioPacketCodecs.TAG_ENTRY.cast()
-	));
+            },
+            CalioPacketCodecs.TAG_ENTRY.cast()
+    ));
 
     public static final SerializableDataType<List<TagEntry>> TAG_ENTRIES = TAG_ENTRY.list();
 
